@@ -3,6 +3,7 @@ from tkinter import ttk, messagebox
 from PIL import Image, ImageTk
 from queens.solver import NQueensSolver
 from db.database import Database
+import subprocess, os, sys, signal
 
 class QueensGUI:
     def __init__(self, master):
@@ -12,16 +13,15 @@ class QueensGUI:
         self.board_size = 8
         self.num_queens = 8
         self.db = Database()
-
         self.solver = None
         self.solutions = []
         self.current_sol_index = -1
         self.sort_ascending = True
         self.priorities = {}
         self.fixed_positions = {}
+        self.agent_processes = []     # храним запущенные процессы агентов
         self.queen_img = self.load_queen_image()
         self.queen_photos = []
-
         self.create_widgets()
         self.draw_board()
 
@@ -170,12 +170,21 @@ class QueensGUI:
         self.canvas.create_image(x, y, image=photo, anchor="nw")
 
     def start_agents(self):
-        import subprocess
-        import os
+        for p in self.agent_processes:
+            try:
+                p.terminate()
+            except:
+                pass
+        self.agent_processes.clear()
+
         base_dir = os.path.dirname(__file__)
         agent_script = os.path.join(base_dir, "mqtt", "mqtt_agent.py")
+        python_exec = sys.executable
+
         for col in range(1, self.num_queens + 1):
-            subprocess.Popen(["python", agent_script, str(col), str(self.board_size)])
+            p = subprocess.Popen([python_exec, agent_script, str(col), str(self.board_size)],
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self.agent_processes.append(p)
         messagebox.showinfo("Агенты", f"Запущено {self.num_queens} агентов через MQTT.")
 
     def find_solutions(self):
@@ -184,9 +193,17 @@ class QueensGUI:
         self.solver.set_config(self.priorities, self.fixed_positions)
         self.solver.solve()
         self.solutions = self.solver.solutions
+        print(f"Найдено решений: {len(self.solutions)}")
         self.sort_solutions(self.sort_ascending)
         self.current_sol_index = 0 if self.solutions else -1
         self.update_ui()
+
+    def __del__(self):
+        for p in self.agent_processes:
+            try:
+                p.terminate()
+            except:
+                pass
 
     def sort_solutions(self, ascending):
         self.sort_ascending = ascending

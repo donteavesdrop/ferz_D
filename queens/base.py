@@ -2,7 +2,7 @@ class Queen:
     def __init__(self, column, neighbor=None, board_size=8, db=None):
         self.column = column
         self.row = 1
-        self.neighbor = neighbor
+        self.neighbor = neighbor      # локальный сосед или MQTTNeighborProxy
         self.board_size = board_size
         self.db = db
         self.fixed = False
@@ -15,12 +15,14 @@ class Queen:
         return self.db.get_cell_color(self.board_size, self.row, self.column)
 
     def can_attack(self, test_row, test_column, test_color=None):
+        # Проверка горизонтали и диагоналей
         if self.row == test_row:
             return True
         col_diff = test_column - self.column
         if (self.row + col_diff == test_row) or (self.row - col_diff == test_row):
             return True
 
+        # Проверка цвета: все ферзи должны быть одного цвета с первым
         first_color = self.get_first_queen_color()
         if test_color is None:
             if self.db is not None:
@@ -30,6 +32,7 @@ class Queen:
         if first_color != test_color:
             return True
 
+        # Спросить соседа слева (если он есть)
         if self.neighbor is not None:
             return self.neighbor.can_attack(test_row, test_column, test_color)
         return False
@@ -41,11 +44,12 @@ class Queen:
 
     def find_solution(self):
         if self.fixed:
+            # Проверяем, не атакует ли нас уже поставленный левый сосед
             if self.neighbor is not None and self.neighbor.can_attack(self.row, self.column):
                 return False
             return True
-        while (self.neighbor is not None and
-               self.neighbor.can_attack(self.row, self.column)):
+        # Иначе ищем первую неподходящую строку
+        while self.neighbor is not None and self.neighbor.can_attack(self.row, self.column):
             if not self.advance():
                 return False
         return True
@@ -66,3 +70,12 @@ class Queen:
 
     def set_neighbor(self, neighbor):
         self.neighbor = neighbor
+
+    def can_attack_local(self, test_row, test_column, test_color=None):
+        """Проверка атаки только этим ферзём (без соседей) – для MQTT-ответов."""
+        if self.row == test_row:
+            return True
+        col_diff = test_column - self.column
+        if (self.row + col_diff == test_row) or (self.row - col_diff == test_row):
+            return True
+        return False
